@@ -1,0 +1,10 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.5
+pydantic-settings==2.7.1
+redis==5.2.1
+rq==2.1.0
+requests==2.32.3
+python-multipart==0.0.20
+Pillow==10.4.0
+numpy==2.1.3
