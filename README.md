@@ -1,62 +1,56 @@
-# isthisai – X (Twitter) mention → AI media check bot (FastAPI + Redis + Python workers)
+# isthisai-bot
 
-This repo is a production-leaning **skeleton** for an X bot that:
-1) detects when `@isthisai` is mentioned
-2) downloads the referenced image/video
-3) runs an AI-likelihood analysis (pluggable detectors)
-4) replies with a short result
+X (Twitter) üzerinde `@isthisai` etiketlendiğinde, paylaşılan görsel veya videoyu analiz edip AI ile üretilmiş olma ihtimalini değerlendiren bir bot.
 
-> ⚠️ Important: Reliable “AI vs real” detection is a hard problem.
-> The included detector is a **heuristic baseline** + a clean interface to plug in a real ML detector later.
+## Ne Yapıyor?
 
----
+Bot şu adımları takip ediyor:
+1. X'te `@isthisai` etiketlendiğinde tetikleniyor
+2. İlgili görsel/videoyu indiriyor
+3. AI üretimi olup olmadığını analiz ediyor (şu an heuristic bazlı, ML modeli eklenebilir)
+4. Sonucu tweet olarak yanıtlıyor
 
-## Architecture
+**Not:** AI tespiti zor bir problem. Şu anki detector basit heuristikler kullanıyor (watermark tespiti, texture analizi vb.). Daha iyi sonuçlar için gerçek bir ML modeli eklenebilir.
 
-- **API service (FastAPI)**: accepts enqueue requests (from an X polling script or your own webhook handler)
-- **Redis**: queue + cache
-- **Worker (RQ)**: pulls jobs from Redis and processes media
-- **Media pipeline**:
-  - image: normalize → compute features → score
-  - video: download → sample frames with `ffmpeg` → per-frame score → aggregate + temporal stability
+## Mimari
 
----
+- **FastAPI**: İş kuyruğuna ekleme ve durum sorgulama için REST API
+- **Redis**: Job queue ve cache (aynı medya tekrar analiz edilmez)
+- **RQ Worker**: Kuyruktan işleri alıp medya analizini yapan worker'lar
+- **Medya Pipeline**:
+  - Görsel: normalize et → feature çıkar → skorla
+  - Video: indir → ffmpeg ile frame'leri çıkar → her frame'i analiz et → sonuçları birleştir
 
-## Quick start (Docker Compose)
+## Kurulum
 
-### 1) Requirements
-- Docker / Docker Compose
-- (Optional outside Docker) `ffmpeg` installed if you run locally
+### Docker ile (Önerilen)
 
-### 2) Configure env
-Create `.env` (or set env vars) with:
+1. `.env` dosyası oluştur:
 
 ```bash
 # Redis
 REDIS_URL=redis://redis:6379/0
 
-# X (Twitter) API credentials (fill these)
+# X API credentials (kendi bilgilerinizi girin)
 X_BEARER_TOKEN=...
 X_CONSUMER_KEY=...
 X_CONSUMER_SECRET=...
 X_ACCESS_TOKEN=...
 X_ACCESS_TOKEN_SECRET=...
 
-# Bot identity
+# Bot ayarları
 BOT_USERNAME=isthisai
 BOT_HANDLE=@isthisai
 
-# Behavior
+# Davranış ayarları
 MAX_VIDEO_SECONDS=60
 MAX_VIDEO_FRAMES=30
 FRAME_FPS=1
 REPLY_COOLDOWN_SECONDS=60
 ```
 
-> The included X client is a placeholder that demonstrates request shapes.  
-> You’ll need to implement the exact endpoints per your X API plan.
+2. Çalıştır:
 
-### 3) Run
 ```bash
 docker compose up --build
 ```
@@ -64,9 +58,12 @@ docker compose up --build
 - API: http://localhost:8000
 - Redis: localhost:6379
 
-### 4) Enqueue a test job
+3. Test için iş ekle:
+
 ```bash
-curl -X POST http://localhost:8000/enqueue   -H "Content-Type: application/json"   -d '{
+curl -X POST http://localhost:8000/enqueue \
+  -H "Content-Type: application/json" \
+  -d '{
     "tweet_id": "123",
     "author_id": "456",
     "media_url": "https://example.com/image.jpg",
@@ -75,40 +72,55 @@ curl -X POST http://localhost:8000/enqueue   -H "Content-Type: application/json"
   }'
 ```
 
----
-
-## Local (without Docker)
+### Docker Olmadan
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 export REDIS_URL=redis://localhost:6379/0
 
+# API'yi başlat
 uvicorn app.main:app --reload
+
+# Başka bir terminalde worker'ı başlat
 python scripts/worker.py
 ```
 
----
+**Not:** Video analizi için `ffmpeg` kurulu olmalı.
 
-## Where to add a real detector
-- Implement `app/detectors/base.py::Detector` and register it in `app/detectors/__init__.py`
-- Replace the heuristic detector with:
-  - an ONNX/Torch model you ship with the repo, or
-  - a paid API (keep keys server-side), or
-  - a mix (ensemble)
+## Detector Ekleme
 
----
+Daha iyi bir detector eklemek için:
 
-## Notes on X integration
-- Mentions can be pulled by polling (cron / long-running process) using X endpoints.
-- For each mention:
-  - find the target tweet (original/quoted/replied)
-  - extract media URLs
-  - enqueue jobs (one job per media)
+1. `app/detectors/base.py` içindeki `Detector` interface'ini implement et
+2. `app/detectors/__init__.py` içinde kaydet
 
-See `scripts/poll_mentions.py` for a scaffold.
+Örnekler:
+- ONNX veya PyTorch modeli
+- Ücretli bir API (API key'leri server-side tut)
+- Ensemble (birden fazla detector'ı birleştir)
 
----
+## X Entegrasyonu
 
-## License
+X API entegrasyonu için `scripts/poll_mentions.py` dosyasına bak. Şu an placeholder, gerçek API çağrılarını eklemen gerekiyor.
+
+Genel akış:
+1. X API'den mention'ları çek (polling veya webhook)
+2. Her mention için:
+   - Hedef tweet'i bul (orijinal/quoted/replied)
+   - Medya URL'lerini çıkar
+   - Her medya için `/enqueue` endpoint'ine POST at
+
+## Test
+
+Test görselleri için:
+
+```bash
+# test_images/ klasörüne example1.jpg ve example2.jpg ekle
+python scripts/test_images.py
+```
+
+## Lisans
+
 MIT
