@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>isthisai – Görsel Test</title>
+  <style>
+    :root {
+      --bg: #0f0f12;
+      --surface: #18181c;
+      --border: #2a2a30;
+      --text: #e4e4e7;
+      --muted: #a1a1aa;
+      --accent: #8b5cf6;
+      --accent-dim: #6d28d9;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'SF Mono', 'Monaco', 'JetBrains Mono', monospace;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.02em;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.875rem;
+      margin-bottom: 2rem;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      width: 100%;
+      max-width: 420px;
+      margin-bottom: 1.5rem;
+    }
+    .dropzone {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      padding: 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      background: rgba(139, 92, 246, 0.04);
+    }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--accent);
+      background: rgba(139, 92, 246, 0.08);
+    }
+    .dropzone input { display: none; }
+    .dropzone p {
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+    .dropzone p strong { color: var(--text); }
+    button {
+      width: 100%;
+      margin-top: 1rem;
+      padding: 0.75rem 1rem;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover { background: var(--accent-dim); }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .result {
+      display: none;
+      animation: fadeIn 0.3s ease;
+    }
+    .result.show { display: block; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .result-preview {
+      width: 100%;
+      max-height: 240px;
+      object-fit: contain;
+      border-radius: 8px;
+      background: var(--bg);
+      margin-bottom: 1rem;
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+    }
+    .badge.high { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+    .badge.medium { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+    .badge.low { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+    .comment {
+      background: var(--bg);
+      padding: 1rem;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      margin-top: 0.75rem;
+    }
+    .reasons {
+      margin-top: 1rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .reasons ul { margin-left: 1rem; margin-top: 0.25rem; }
+    .error {
+      color: var(--danger);
+      font-size: 0.875rem;
+      margin-top: 0.5rem;
+    }
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin: 0 auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <h1>isthisai</h1>
+  <p class="subtitle">Görsel AI ile üretilmiş mi? Test et</p>
+
+  <div class="card">
+    <form id="form">
+      <div class="dropzone" id="dropzone">
+        <input type="file" id="file" accept="image/jpeg,image/png,image/webp" />
+        <p><strong>Görsel sürükle</strong> veya tıkla</p>
+        <p>JPG, PNG, WebP (max ~10MB)</p>
+      </div>
+      <button type="submit" id="submit" disabled>Analiz Et</button>
+    </form>
+  </div>
+
+  <div class="card result" id="result">
+    <img class="result-preview" id="preview" alt="Önizleme" />
+    <div id="badge"></div>
+    <div class="comment" id="comment"></div>
+    <div class="reasons" id="reasons"></div>
+  </div>
+
+  <script>
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('file');
+    const form = document.getElementById('form');
+    const submitBtn = document.getElementById('submit');
+    const result = document.getElementById('result');
+    const preview = document.getElementById('preview');
+    const badgeEl = document.getElementById('badge');
+    const commentEl = document.getElementById('comment');
+    const reasonsEl = document.getElementById('reasons');
+
+    dropzone.addEventListener('click', () => fileInput.click());
+    dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+      if (e.dataTransfer.files.length) fileInput.files = e.dataTransfer.files;
+      updateSubmit();
+    });
+    fileInput.addEventListener('change', updateSubmit);
+
+    function updateSubmit() {
+      submitBtn.disabled = !fileInput.files.length;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!fileInput.files.length) return;
+
+      const file = fileInput.files[0];
+      const fd = new FormData();
+      fd.append('file', file);
+
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spinner"></span>';
+      result.classList.remove('show');
+
+      try {
+        const resp = await fetch('/analyze', { method: 'POST', body: fd });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || 'Hata oluştu');
+
+        preview.src = URL.createObjectURL(file);
+        preview.style.display = 'block';
+
+        const score = data.score;
+        let label, cls;
+        if (score >= 0.75) { label = 'Yüksek olasılık'; cls = 'high'; }
+        else if (score >= 0.45) { label = 'Orta olasılık'; cls = 'medium'; }
+        else { label = 'Düşük olasılık'; cls = 'low'; }
+        badgeEl.innerHTML = `<span class="badge ${cls}">${label} · %${Math.round(score * 100)}</span>`;
+
+        commentEl.textContent = data.comment;
+        if (data.reasons && data.reasons.length) {
+          reasonsEl.innerHTML = '<strong>Sinyaller:</strong><ul>' +
+            data.reasons.map(r => `<li>${r}</li>`).join('') + '</ul>';
+        } else {
+          reasonsEl.innerHTML = '';
+        }
+        result.classList.add('show');
+      } catch (err) {
+        commentEl.textContent = '';
+        badgeEl.innerHTML = '';
+        reasonsEl.innerHTML = `<span class="error">${err.message}</span>`;
+        preview.style.display = 'none';
+        result.classList.add('show');
+      }
+
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Analiz Et';
+    });
+  </script>
+</body>
+</html>

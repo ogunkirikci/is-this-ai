@@ -1,55 +1,55 @@
 # isthisai-bot
 
-X (Twitter) üzerinde `@isthisai` etiketlendiğinde, paylaşılan görsel veya videoyu analiz edip AI ile üretilmiş olma ihtimalini değerlendiren bir bot.
+A bot that analyzes images or videos shared on X (Twitter) when mentioned with `@isthisai` and assesses the likelihood of AI-generated content.
 
-## Ne Yapıyor?
+## What It Does
 
-Bot şu adımları takip ediyor:
-1. X'te `@isthisai` etiketlendiğinde tetikleniyor
-2. İlgili görsel/videoyu indiriyor
-3. AI üretimi olup olmadığını analiz ediyor (şu an heuristic bazlı, ML modeli eklenebilir)
-4. Sonucu tweet olarak yanıtlıyor
+The bot follows these steps:
+1. Triggered when `@isthisai` is mentioned on X
+2. Downloads the relevant image/video
+3. Analyzes whether it is AI-generated (uses ItsNotAI v2 model)
+4. Replies with the result as a tweet
 
-**Not:** AI tespiti zor bir problem. Şu anki detector basit heuristikler kullanıyor (watermark tespiti, texture analizi vb.). Daha iyi sonuçlar için gerçek bir ML modeli eklenebilir.
+**Note:** AI detection is a hard problem. The current detector uses ItsNotAI v2 (Hugging Face). No detector is 100% accurate; false positives and negatives can occur.
 
-## Mimari
+## Architecture
 
-- **FastAPI**: İş kuyruğuna ekleme ve durum sorgulama için REST API
-- **Redis**: Job queue ve cache (aynı medya tekrar analiz edilmez)
-- **RQ Worker**: Kuyruktan işleri alıp medya analizini yapan worker'lar
-- **Medya Pipeline**:
-  - Görsel: normalize et → feature çıkar → skorla
-  - Video: indir → ffmpeg ile frame'leri çıkar → her frame'i analiz et → sonuçları birleştir
+- **FastAPI**: REST API for enqueueing jobs and status queries
+- **Redis**: Job queue and cache (same media is not re-analyzed)
+- **RQ Worker**: Workers that process jobs from the queue and analyze media
+- **Media Pipeline**:
+  - Image: normalize → extract features → score
+  - Video: download → extract frames via ffmpeg → analyze each frame → aggregate results
 
-## Kurulum
+## Installation
 
-### Docker ile (Önerilen)
+### With Docker (Recommended)
 
-1. `.env` dosyası oluştur:
+1. Create a `.env` file:
 
 ```bash
 # Redis
 REDIS_URL=redis://redis:6379/0
 
-# X API credentials (kendi bilgilerinizi girin)
+# X API credentials (fill in your own)
 X_BEARER_TOKEN=...
 X_CONSUMER_KEY=...
 X_CONSUMER_SECRET=...
 X_ACCESS_TOKEN=...
 X_ACCESS_TOKEN_SECRET=...
 
-# Bot ayarları
+# Bot settings
 BOT_USERNAME=isthisai
 BOT_HANDLE=@isthisai
 
-# Davranış ayarları
+# Behavior
 MAX_VIDEO_SECONDS=60
 MAX_VIDEO_FRAMES=30
 FRAME_FPS=1
 REPLY_COOLDOWN_SECONDS=60
 ```
 
-2. Çalıştır:
+2. Run:
 
 ```bash
 docker compose up --build
@@ -58,7 +58,7 @@ docker compose up --build
 - API: http://localhost:8000
 - Redis: localhost:6379
 
-3. Test için iş ekle:
+3. Add a test job:
 
 ```bash
 curl -X POST http://localhost:8000/enqueue \
@@ -72,55 +72,69 @@ curl -X POST http://localhost:8000/enqueue \
   }'
 ```
 
-### Docker Olmadan
+### Without Docker (with uv)
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-export REDIS_URL=redis://localhost:6379/0
+# Install dependencies (uv auto-creates .venv)
+uv sync
 
-# API'yi başlat
-uvicorn app.main:app --reload
+# Start API
+uv run uvicorn app.main:app --reload
 
-# Başka bir terminalde worker'ı başlat
-python scripts/worker.py
+# In another terminal, start worker
+uv run python scripts/worker.py
 ```
 
-**Not:** Video analizi için `ffmpeg` kurulu olmalı.
+**Using uv:** When you run `uv sync`, uv creates `.venv` and installs packages there. With `uv run`, this venv is used automatically; no need to activate manually.
 
-## Detector Ekleme
+**Note:** `ffmpeg` must be installed for video analysis.
 
-Daha iyi bir detector eklemek için:
+## Detector
 
-1. `app/detectors/base.py` içindeki `Detector` interface'ini implement et
-2. `app/detectors/__init__.py` içinde kaydet
+Default detector: **ItsNotAI v2** (Hugging Face)
+- Model: `boluobobo/ItsNotAI-ai-detector-v2`
+- ~95% accuracy, supports FLUX, Midjourney, Stable Diffusion
+- Model is downloaded on first run (~1.2GB)
 
-Örnekler:
-- ONNX veya PyTorch modeli
-- Ücretli bir API (API key'leri server-side tut)
-- Ensemble (birden fazla detector'ı birleştir)
+Optional: Set `HF_TOKEN` (Hugging Face) environment variable for faster downloads.
 
-## X Entegrasyonu
+To switch back to the heuristic detector, use `HeuristicDetector()` in `get_default_detector()` in `app/detectors/__init__.py`.
 
-X API entegrasyonu için `scripts/poll_mentions.py` dosyasına bak. Şu an placeholder, gerçek API çağrılarını eklemen gerekiyor.
+## Adding a New Detector
 
-Genel akış:
-1. X API'den mention'ları çek (polling veya webhook)
-2. Her mention için:
-   - Hedef tweet'i bul (orijinal/quoted/replied)
-   - Medya URL'lerini çıkar
-   - Her medya için `/enqueue` endpoint'ine POST at
+1. Implement the `Detector` interface in `app/detectors/base.py`
+2. Register it in `app/detectors/__init__.py`
 
-## Test
+## X Integration
 
-Test görselleri için:
+See `scripts/poll_mentions.py` for X API integration. It is currently a placeholder; you need to add real API calls.
+
+General flow:
+1. Fetch mentions from X API (polling or webhook)
+2. For each mention:
+   - Find the target tweet (original/quoted/replied)
+   - Extract media URLs
+   - POST to `/enqueue` for each media
+
+## Testing
+
+### Web UI (no Twitter)
+
+To upload an image and get AI analysis:
 
 ```bash
-# test_images/ klasörüne example1.jpg ve example2.jpg ekle
-python scripts/test_images.py
+uv sync && uv run uvicorn app.main:app --reload
 ```
 
-## Lisans
+Open http://localhost:8000 in your browser. Drag or select an image, then click **Analyze**. Redis and worker are not required.
+
+### CLI script
+
+```bash
+# Add example1.jpg and example2.jpg to test_images/ folder
+uv run python scripts/test_images.py
+```
+
+## License
 
 MIT
